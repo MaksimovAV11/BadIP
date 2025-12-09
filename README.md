@@ -1,17 +1,3 @@
-<p style="font-family: monospace; line-height: 1;">
-
-<span style="color:#d24cff;">    ██████╗  █████╗ ██████╗ ██╗██████╗ </span><br>
-<span style="color:#cc33ff;">    ██╔══██╗██╔══██╗██╔══██╗██║██╔══██╗</span><br>
-<span style="color:#bf1fff;">    ██████╔╝███████║██║  ██║██║██████╔╝</span><br>
-<span style="color:#b300ff;">    ██╔══██╗██╔══██║██║  ██║██║██╔═══╝ </span><br>
-<span style="color:#d966ff;">    ██████╔╝██║  ██║██████╔╝██║██║     </span><br>
-<span style="color:#e699ff;">    ╚═════╝ ╚═╝  ╚═╝╚═════╝ ╚═╝╚═╝     </span>
-
-</p>
-
-  By MaksimovAV
-
-
 
 # 🚫 BadIP — Lightweight IP Blackhole Firewall  
 A simple and efficient Bash script that automatically downloads a list of malicious or suspicious IP addresses and blocks them using `ipset` + `iptables`.  
