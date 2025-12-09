@@ -1,6 +1,7 @@
 #!/bin/bash
 
 PREFIX="[BadIP]"
+export PATH="/usr/sbin:/sbin:/usr/bin:/bin"
 
 clear
 echo -e "
@@ -29,38 +30,56 @@ function progress_bar() {
 }
 progress_bar
 
-
 function ensure_iptables_installed() {
     if command -v iptables >/dev/null 2>&1; then
         echo "$PREFIX iptables detected: $(iptables -V)"
         return 0
     fi
 
-    echo "$PREFIX iptables is not installed. Install it now? (y/n)"
+    echo "$PREFIX iptables not found. Install? (y/n)"
     read -r answer
-
-    if [[ "$answer" == "y" || "$answer" == "Y" ]]; then
-        echo "$PREFIX Installing iptables..."
-
+    if [[ "$answer" =~ ^[Yy]$ ]]; then
         if command -v apt >/dev/null 2>&1; then
-            apt update -y && apt install -y iptables ip6tables ipset
+            apt update -y && apt install -y iptables ip6tables
         elif command -v yum >/dev/null 2>&1; then
-            yum install -y iptables ipset iptables-services
+            yum install -y iptables iptables-services
         elif command -v apk >/dev/null 2>&1; then
-            apk add iptables ipset
+            apk add iptables
         else
-            echo "$PREFIX Unknown OS. Install iptables manually."
+            echo "$PREFIX Unknown OS."
             exit 1
         fi
-        echo "$PREFIX iptables installed successfully."
     else
-        echo "$PREFIX iptables is required. Exiting."
+        exit 1
+    fi
+}
+
+function ensure_ipset_installed() {
+    if command -v ipset >/dev/null 2>&1; then
+        echo "$PREFIX ipset detected: $(ipset -v | head -n 1)"
+        return 0
+    fi
+
+    echo "$PREFIX ipset not found. Install? (y/n)"
+    read -r answer
+    if [[ "$answer" =~ ^[Yy]$ ]]; then
+        if command -v apt >/dev/null 2>&1; then
+            apt update -y && apt install -y ipset
+        elif command -v yum >/dev/null 2>&1; then
+            yum install -y ipset
+        elif command -v apk >/dev/null 2>&1; then
+            apk add ipset
+        else
+            echo "$PREFIX Unknown OS."
+            exit 1
+        fi
+    else
         exit 1
     fi
 }
 
 ensure_iptables_installed
-
+ensure_ipset_installed
 
 echo "$PREFIX Initializing IP sets..."
 
@@ -72,18 +91,14 @@ if ! ipset list myBlackhole-4 >/dev/null 2>&1; then
     exit 1
 fi
 
-echo "$PREFIX ipset sets initialized."
-
-
 function yep_ipset() {
     BAD_IPV4=$(curl -s https://raw.githubusercontent.com/MaksimovAV11/BadIP/proxies.txt)
-
     if [[ $? -ne 0 || -z "$BAD_IPV4" ]]; then
         echo "$PREFIX Failed to download IP list!"
         return 1
     fi
 
-    echo "$PREFIX Adding IPs to ipset (real-time stream):"
+    echo "$PREFIX Adding IPs to ipset:"
     echo ""
 
     count=0
@@ -98,7 +113,6 @@ function yep_ipset() {
     echo "$PREFIX Added $count IPs to myBlackhole-4."
     return 0
 }
-
 
 function yep_iptables() {
     echo "$PREFIX Applying firewall rules..."
@@ -115,32 +129,28 @@ function yep_iptables() {
     return 0
 }
 
-
 function setup_cron() {
-    echo "$PREFIX Enable automatic daily update of bad IP list? (y/n)"
+    echo "$PREFIX Enable automatic update? (y/n)"
     read -r cron_answer
 
-    if [[ "$cron_answer" == "y" || "$cron_answer" == "Y" ]]; then
+    if [[ "$cron_answer" =~ ^[Yy]$ ]]; then
         echo "$PREFIX Setting up cron job..."
 
         cat <<EOF >/usr/local/bin/badip-update.sh
 #!/bin/bash
 BAD_IPV4=\$(curl -s https://raw.githubusercontent.com/MaksimovAV11/BadIP/proxies.txt)
-
 ipset flush myBlackhole-4
-
 for ip in \$BAD_IPV4; do
     ipset add myBlackhole-4 \$ip -exist 2>/dev/null
 done
 EOF
 
         chmod +x /usr/local/bin/badip-update.sh
-
         (crontab -l 2>/dev/null; echo "0 */6 * * * bash /usr/local/bin/badip-update.sh >/dev/null 2>&1") | crontab -
 
-        echo "$PREFIX Cron auto-update enabled (every 6 hours)."
+        echo "$PREFIX Cron update enabled."
     else
-        echo "$PREFIX Cron auto-update disabled."
+        echo "$PREFIX Cron disabled."
     fi
 }
 
