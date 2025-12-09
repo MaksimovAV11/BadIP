@@ -4,7 +4,7 @@ PREFIX="[BadIP]"
 
 clear
 echo -e "
-\e[38;5;93m     ██████╗  █████╗ ██████╗ ██╗██████╗ 
+\e[38;5;93m    ██████╗  █████╗ ██████╗ ██╗██████╗ 
 \e[38;5;129m    ██╔══██╗██╔══██╗██╔══██╗██║██╔══██╗
 \e[38;5;135m    ██████╔╝███████║██║  ██║██║██████╔╝
 \e[38;5;141m    ██╔══██╗██╔══██║██║  ██║██║██╔═══╝ 
@@ -27,11 +27,12 @@ function progress_bar() {
     done
     echo -e "\n"
 }
-
 progress_bar
+
 
 function ensure_iptables_installed() {
     if command -v iptables >/dev/null 2>&1; then
+        echo "$PREFIX iptables detected: $(iptables -V)"
         return 0
     fi
 
@@ -42,11 +43,11 @@ function ensure_iptables_installed() {
         echo "$PREFIX Installing iptables..."
 
         if command -v apt >/dev/null 2>&1; then
-            apt update -y && apt install -y iptables ip6tables
+            apt update -y && apt install -y iptables ip6tables ipset
         elif command -v yum >/dev/null 2>&1; then
-            yum install -y iptables iptables-services
+            yum install -y iptables ipset iptables-services
         elif command -v apk >/dev/null 2>&1; then
-            apk add iptables
+            apk add iptables ipset
         else
             echo "$PREFIX Unknown OS. Install iptables manually."
             exit 1
@@ -57,6 +58,22 @@ function ensure_iptables_installed() {
         exit 1
     fi
 }
+
+ensure_iptables_installed
+
+
+echo "$PREFIX Initializing IP sets..."
+
+ipset create myBlackhole-4 hash:net family inet -exist
+ipset create myBlackhole-6 hash:net family inet6 -exist
+
+if ! ipset list myBlackhole-4 >/dev/null 2>&1; then
+    echo "$PREFIX ERROR: Failed to create ipset myBlackhole-4"
+    exit 1
+fi
+
+echo "$PREFIX ipset sets initialized."
+
 
 function yep_ipset() {
     BAD_IPV4=$(curl -s https://raw.githubusercontent.com/MaksimovAV11/BadIP/proxies.txt)
@@ -70,19 +87,22 @@ function yep_ipset() {
     echo ""
 
     count=0
-    for ip in $BAD_IPV4; do
-        ipset -A myBlackhole-4 "$ip" 2>/dev/null
+    while read -r ip; do
+        [[ -z "$ip" ]] && continue
+        ipset add myBlackhole-4 "$ip" -exist 2>/dev/null
         printf "\e[38;5;135m$PREFIX >> Adding %-20s...\e[0m\n" "$ip"
-        sleep 0.001
         ((count++))
-    done
+    done <<< "$BAD_IPV4"
 
     echo ""
     echo "$PREFIX Added $count IPs to myBlackhole-4."
     return 0
 }
 
+
 function yep_iptables() {
+    echo "$PREFIX Applying firewall rules..."
+
     iptables -C INPUT -m set --match-set myBlackhole-4 src -j DROP 2>/dev/null \
         || iptables -A INPUT -m set --match-set myBlackhole-4 src -j DROP
 
@@ -90,8 +110,11 @@ function yep_iptables() {
         ip6tables -C INPUT -m set --match-set myBlackhole-6 src -j DROP 2>/dev/null \
             || ip6tables -A INPUT -m set --match-set myBlackhole-6 src -j DROP
     fi
+
+    echo "$PREFIX iptables rules applied."
     return 0
 }
+
 
 function setup_cron() {
     echo "$PREFIX Enable automatic daily update of bad IP list? (y/n)"
@@ -100,8 +123,6 @@ function setup_cron() {
     if [[ "$cron_answer" == "y" || "$cron_answer" == "Y" ]]; then
         echo "$PREFIX Setting up cron job..."
 
-        (crontab -l 2>/dev/null; echo "0 */6 * * * bash /usr/local/bin/badip-update.sh >/dev/null 2>&1") | crontab -
-
         cat <<EOF >/usr/local/bin/badip-update.sh
 #!/bin/bash
 BAD_IPV4=\$(curl -s https://raw.githubusercontent.com/MaksimovAV11/BadIP/proxies.txt)
@@ -109,22 +130,19 @@ BAD_IPV4=\$(curl -s https://raw.githubusercontent.com/MaksimovAV11/BadIP/proxies
 ipset flush myBlackhole-4
 
 for ip in \$BAD_IPV4; do
-    ipset -A myBlackhole-4 \$ip 2>/dev/null
+    ipset add myBlackhole-4 \$ip -exist 2>/dev/null
 done
 EOF
 
         chmod +x /usr/local/bin/badip-update.sh
+
+        (crontab -l 2>/dev/null; echo "0 */6 * * * bash /usr/local/bin/badip-update.sh >/dev/null 2>&1") | crontab -
 
         echo "$PREFIX Cron auto-update enabled (every 6 hours)."
     else
         echo "$PREFIX Cron auto-update disabled."
     fi
 }
-
-ensure_iptables_installed
-
-ipset -N myBlackhole-4 hash:net family inet 2>/dev/null
-ipset -N myBlackhole-6 hash:net family inet6 2>/dev/null
 
 if yep_ipset; then
     if yep_iptables; then
@@ -134,6 +152,7 @@ if yep_ipset; then
     fi
 else
     echo "$PREFIX Failed to generate ipset. Aborting."
+    exit 1
 fi
 
 setup_cron
