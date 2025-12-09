@@ -92,7 +92,7 @@ if ! ipset list myBlackhole-4 >/dev/null 2>&1; then
 fi
 
 function yep_ipset() {
-    BAD_IPV4=$(curl -s https://raw.githubusercontent.com/MaksimovAV11/BadIP/proxies.txt)
+    BAD_IPV4=$(curl -s https://raw.githubusercontent.com/MaksimovAV11/BadIP/main/proxies.txt)
     if [[ $? -ne 0 || -z "$BAD_IPV4" ]]; then
         echo "$PREFIX Failed to download IP list!"
         return 1
@@ -138,7 +138,7 @@ function setup_cron() {
 
         cat <<EOF >/usr/local/bin/badip-update.sh
 #!/bin/bash
-BAD_IPV4=\$(curl -s https://raw.githubusercontent.com/MaksimovAV11/BadIP/proxies.txt)
+BAD_IPV4=\$(curl -s https://raw.githubusercontent.com/MaksimovAV11/BadIP/main/proxies.txt)
 ipset flush myBlackhole-4
 for ip in \$BAD_IPV4; do
     ipset add myBlackhole-4 \$ip -exist 2>/dev/null
